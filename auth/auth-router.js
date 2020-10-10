@@ -1,46 +1,40 @@
 const router = require('express').Router();
-const bcrypt = require('bcryptjs');
-
-const Users = require('../users/model');
-const newToken = require('./giveToken');
-const { validateUser } = require('../users/validation');
+const db = require('../database/dbConfig')
+const bcrypt = require('bcryptjs')
 
 router.post('/register', (req, res) => {
-    let user = req.body
-
-    const validateResult = validateUser(user);
-    if (validateResult.isSuccessful === true) {
-        const hash = bcrypt.hashSync(user.password, 8);
-        user.password = hash;
-
-        Users.add(user)
-            .then(saved => {
-                const token = newToken(saved);
-                res.status(201).json(token);
-            })
-            .catch(err => {
-                res.status(500).json({ message: 'I need this break', err })
-            })
-    } else {
-        res.status(400).json({ Message: 'not valid', errors: validateUser(user) })
-    }
+    req.body.password = bcrypt.hashSync(req.body.password)
+    return db('users').insert(req.body)
+    .then(resp => {
+        if(resp){
+          req.session.user = resp
+          res.status(201).json({message:`user created, welcome ${req.body.username}`})
+        } else {
+          res.status(400).json({message:'something went wrong!'})
+        }
+    })
+    .catch(err => {
+      res.status(500).json({message:'something really went wrong!!'})
+    })
 });
 
 router.post('/login', (req, res) => {
-    let { username, password } = req.body;
-
-    Users.findBy({ username })
-        .first()
+  const username = req.body.username
+   return db('users').where({'username':req.body.username})
         .then(user => {
-            if (user && bcrypt.compareSync(password, user.password)) {
-                const token = newToken(user);
-                res.status(200).json({ Message: `Welcome ${user.username}`, token });
-            } else {
-                res.status(401).json({ Message: 'Credentials not valid' });
-            }
+          console.log(user[0].password)
+          console.log(req.body)
+          if(user && bcrypt.compareSync(req.body.password,user[0].password)){
+            console.log('it worked!')
+            req.session.user = user
+            res.status(200).json({message:`welcome back ${user[0].username}`})
+          } else {
+            res.status(404).json({message:'invalid credentials!'})
+          }
         })
         .catch(err => {
-            res.status(500).json({ Message: 'Danger Will Robinson! Danger!' })
+          console.log(err)
+          res.status(500).json({message:'something really went wrong!'})
         })
 });
 
